@@ -17,9 +17,22 @@ Two ways to place the stair (like Revit):
 `boundary` (closed curve, optional) checks that every tread and landing is inside it.
 `opening` (closed curve, optional) is the floor opening above, for the headroom check.
 `rules` (optional) is the path of a rule file; empty = example file (PLACEHOLDERS).
+A relative path is read from the folder of this .gh file.
 
-Slider values are in model units (mm). 0 on riser_count, tread_depth,
-flight1_risers or landing_depth means "auto".
+Units: slider values and the report are always in millimetres. The stair library
+works in millimetres; this component converts the points/curves you give it from the
+model units of the open Rhino document to mm, and converts the geometry it outputs
+and bakes back to model units. In a millimetre document nothing is converted.
+0 on riser_count, tread_depth, flight1_risers or landing_depth means "auto".
+
+Library location (the folder that holds the 'stairgen' and 'stairgen_rhino'
+folders) is found in this order:
+  1. STAIRGEN_PATH below, if not empty (absolute, or relative to this .gh file);
+  2. the STAIRGEN_PATH environment variable;
+  3. a search from the folder of this .gh file (and of the Rhino file): the folder
+     itself, up to 2 parent folders, and sub-folders named like "*stair*" (2 levels).
+So keeping the library next to the .gh file (e.g. in a "stair-generator" folder)
+works on any computer and any drive letter without editing anything.
 
 Bake: press the Bake button. Everything goes to `bake_layer` (default
 03_ARCH::A-STAIR) as one group. Pick a `text_layer` to put the step numbers, arrows
@@ -28,22 +41,140 @@ and UP label on another layer. Missing layers are created.
 DESIGN AID ONLY - NOT A CODE COMPLIANCE CERTIFICATION.
 """
 
-# Folder that contains the 'stairgen' and 'stairgen_rhino' folders.
-STAIRGEN_PATH = r"F:\CMC\06_SOFTWARE\04_GRASSHOPPER\SCRIPT\stair-generator\stair-generator"
+# Folder that contains the 'stairgen' and 'stairgen_rhino' folders. Leave empty to
+# find it automatically (see the notes above). A relative path is read from the .gh folder.
+STAIRGEN_PATH = ""
 # True = rebuild the controls once (replaces the controls, resets their values). Set back to False.
 REBUILD = False
+# True = re-import the library on every solution so library edits show up at once
+# (slower). Set to False when you are not editing the library.
+RELOAD_LIBRARY = True
 
 import importlib
+import os
 import sys
 
-importlib.invalidate_caches()  # see library files added while Rhino is open
-if STAIRGEN_PATH not in sys.path:
-    sys.path.insert(0, STAIRGEN_PATH)
-for _name in list(sys.modules):  # re-import so edits to the library show up
-    if _name.split(".")[0] in ("stairgen", "stairgen_rhino"):
-        del sys.modules[_name]
+LIBRARY_PACKAGES = ("stairgen", "stairgen_rhino")
+ENV_VAR = "STAIRGEN_PATH"
 
-from stairgen_rhino import gh as _sg  # noqa: E402
+
+def _is_library(folder):
+    """True if ``folder`` holds both library packages."""
+    return bool(folder) and all(os.path.isfile(os.path.join(folder, pkg, "__init__.py"))
+                                for pkg in LIBRARY_PACKAGES)
+
+
+def _search_roots(gh_file, rhino_file):
+    """Folders to search from: the .gh folder and the Rhino file folder, then parents."""
+    roots = []
+    for f in (gh_file, rhino_file):
+        if not f:
+            continue
+        folder = os.path.dirname(os.path.abspath(f))
+        for _ in range(3):  # the folder itself + 2 parents
+            if folder not in roots:
+                roots.append(folder)
+            parent = os.path.dirname(folder)
+            if parent == folder:
+                break
+            folder = parent
+    return roots
+
+
+def find_library(configured, gh_file, rhino_file, environ=None):
+    """Return (folder or None, [places looked]) for the stairgen library."""
+    environ = os.environ if environ is None else environ
+    gh_dir = os.path.dirname(os.path.abspath(gh_file)) if gh_file else None
+    looked = []
+
+    def resolve(path, label):
+        path = os.path.expandvars(os.path.expanduser(path.strip().strip('"')))
+        if not os.path.isabs(path):
+            if gh_dir is None:
+                looked.append("{}: '{}' is relative but the .gh file is not saved".format(label, path))
+                return None
+            path = os.path.join(gh_dir, path)
+        path = os.path.normpath(path)
+        looked.append("{}: {}".format(label, path))
+        return path if _is_library(path) else None
+
+    if configured and configured.strip():
+        return resolve(configured, "STAIRGEN_PATH in script"), looked
+    if environ.get(ENV_VAR, "").strip():
+        return resolve(environ[ENV_VAR], ENV_VAR + " environment variable"), looked
+    for root in _search_roots(gh_file, rhino_file):
+        looked.append("search: " + root)
+        candidates = [root]
+        try:
+            level1 = [os.path.join(root, n) for n in sorted(os.listdir(root))
+                      if "stair" in n.lower() and os.path.isdir(os.path.join(root, n))]
+        except OSError:
+            level1 = []
+        for sub in level1:
+            candidates.append(sub)
+            try:
+                candidates += [os.path.join(sub, n) for n in sorted(os.listdir(sub))
+                               if "stair" in n.lower() and os.path.isdir(os.path.join(sub, n))]
+            except OSError:
+                pass
+        for c in candidates:
+            if _is_library(c):
+                return os.path.normpath(c), looked
+    if not gh_file:
+        looked.append("(the .gh file is not saved yet, so its folder could not be searched)")
+    return None, looked
+
+
+def _gh_file_path():
+    try:
+        doc = ghenv.Component.OnPingDocument()
+        return doc.FilePath if doc is not None and doc.IsFilePathDefined else None
+    except Exception:
+        return None
+
+
+def _rhino_doc():
+    """The Rhino document Grasshopper is working on, or None when none is open."""
+    try:
+        import Rhino
+        return Rhino.RhinoDoc.ActiveDoc
+    except Exception:
+        return None
+
+
+def _error(msg):
+    from Grasshopper.Kernel import GH_RuntimeMessageLevel
+    ghenv.Component.AddRuntimeMessage(GH_RuntimeMessageLevel.Error, msg)
+    ghenv.Component.Message = "error"
+
+
+def _import_library():
+    """Put the library on sys.path and import it. Returns (module or None, error text)."""
+    rdoc = _rhino_doc()
+    folder, looked = find_library(STAIRGEN_PATH, _gh_file_path(),
+                                  getattr(rdoc, "Path", None) if rdoc is not None else None)
+    if folder is None:
+        return None, ("Stair library not found (folder with 'stairgen' and 'stairgen_rhino').\n"
+                      "Put it next to this .gh file, or set STAIRGEN_PATH in the script or the "
+                      "STAIRGEN_PATH environment variable.\nLooked in:\n  " + "\n  ".join(looked))
+    importlib.invalidate_caches()  # see library files added while Rhino is open
+    # drop other copies of the library (another computer's / drive's path) from sys.path
+    sys.path[:] = [p for p in sys.path if not (p != folder and _is_library(p))]
+    if folder not in sys.path:
+        sys.path.insert(0, folder)
+    loaded = sys.modules.get("stairgen_rhino")
+    stale = loaded is not None and not os.path.abspath(
+        getattr(loaded, "__file__", "") or "").startswith(os.path.abspath(folder))
+    if RELOAD_LIBRARY or stale:
+        for name in list(sys.modules):  # re-import so edits to the library show up
+            if name.split(".")[0] in LIBRARY_PACKAGES:
+                del sys.modules[name]
+    try:
+        from stairgen_rhino import gh as module
+    except Exception as e:  # syntax error etc. in the library
+        return None, "Could not import the stair library from {}:\n{}: {}".format(
+            folder, type(e).__name__, e)
+    return module, None
 
 # --- layer library (Parent::Child), edit to suit -----------------------------------
 LAYERS = [
@@ -391,79 +522,207 @@ def _arrange(doc):
     comp.ExpireSolution(False)
 
 
+# --- input checks ------------------------------------------------------------------
+_CONTROL_BY_NAME = {c[0]: c for c in CONTROLS}
+CHOICE_INPUTS = ("stair_type", "turn", "location", "stringer_on")  # fixed lists of values
+
+
+class InputError(Exception):
+    """A bad input value; shown as a red component message, not a traceback."""
+
+
+def normalise_choice(name, value):
+    """Return the canonical value for a drop-down input (case-insensitive), or raise."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    allowed = [v for _, v in _CONTROL_BY_NAME[name][2]]
+    text = str(value).strip().strip('"').strip()
+    for a in allowed:
+        if text.lower() == a.lower():
+            return a
+    raise InputError("{} = '{}' is not valid. Use one of: {}.".format(
+        name, text, ", ".join(allowed)))
+
+
 def _get(name):
     v = globals().get(name)
-    if name in AUTO_WHEN_ZERO and v is not None and float(v) <= 0:
-        return None
+    if name in CHOICE_INPUTS:
+        return normalise_choice(name, v)
+    if name in AUTO_WHEN_ZERO and v is not None:
+        try:
+            if float(v) <= 0:
+                return None
+        except (TypeError, ValueError):
+            raise InputError("{} = '{}' is not a number.".format(name, v))
     return v
+
+
+# --- Rhino document: units and tolerance -------------------------------------------
+def units_context(rdoc):
+    """(model-units-to-mm factor, absolute tolerance in mm, angle tolerance deg, unit name)."""
+    import Rhino
+    factor = Rhino.RhinoMath.UnitScale(rdoc.ModelUnitSystem, Rhino.UnitSystem.Millimeters)
+    return (factor, rdoc.ModelAbsoluteTolerance * factor, rdoc.ModelAngleToleranceDegrees,
+            str(rdoc.ModelUnitSystem).split(".")[-1])
+
+
+def scaled(value, factor):
+    """Copy of point/curve/brep (or a list of them) scaled about the origin; other values as is."""
+    if value is None or abs(factor - 1.0) < 1e-12:
+        return value
+    if isinstance(value, (str, bytes, int, float)):
+        return value
+    if isinstance(value, (list, tuple)):
+        return [scaled(v, factor) for v in value]
+    import Rhino.Geometry as rg
+    if isinstance(value, rg.Point3d):
+        return rg.Point3d(value.X * factor, value.Y * factor, value.Z * factor)
+    if hasattr(value, "Duplicate") and hasattr(value, "Transform"):
+        dup = value.Duplicate()
+        dup.Transform(rg.Transform.Scale(rg.Point3d.Origin, factor))
+        return dup
+    if hasattr(value, "__iter__"):  # .NET List / array of geometry
+        return [scaled(v, factor) for v in value]
+    return value
+
+
+def _curve_in_mm(sg, value, factor):
+    """Curve input converted to a curve in mm (unchanged in a mm document)."""
+    if value is None or abs(factor - 1.0) < 1e-12:
+        return value
+    curve = sg._to_curve(value)
+    if curve is None:
+        raise InputError("Could not read the curve input ({}).".format(type(value).__name__))
+    return scaled(curve, factor)
+
+
+def resolve_rules(rules, gh_file):
+    """A relative rule-file path is read from the folder of the .gh file."""
+    if not rules or not isinstance(rules, str):
+        return rules
+    path = os.path.expandvars(os.path.expanduser(rules.strip().strip('"')))
+    if os.path.isabs(path):
+        return path
+    if not gh_file:
+        raise InputError("rules = '{}' is a relative path: save the .gh file first, "
+                         "or use a full path.".format(rules))
+    return os.path.normpath(os.path.join(os.path.dirname(gh_file), path))
+
+
+def _run():
+    """Solve, set the outputs (as globals) and post messages."""
+    global solids, treads, risers, stringers, landings, report, status, n_risers, riser_h
+    global tread_d, flights, headroom, fits_boundary, numbers_pt, numbers_txt, arrows
+    global up_pt, up_txt
+
+    rdoc = _rhino_doc()
+    if rdoc is None:
+        raise InputError("No Rhino document is open. Open or create a Rhino file "
+                         "(the stair uses its units and tolerance).")
+    to_mm, tol_mm, angle_tol, unit_name = units_context(rdoc)
+    to_model = 1.0 / to_mm
+
+    sg, err = _import_library()
+    if sg is None:
+        raise InputError(err)
+
+    options = ["{} = {}".format(k, globals()[k]) for k in OPTION_INPUTS
+               if globals().get(k) is not None]
+    if (_get("stringer_on") or "yes") == "no":
+        options.append("stringer_thk = 0")
+    rot = math.radians(float(globals().get("rotation") or 0.0))
+    start_in = _get("start")
+    r = sg.run_design(
+        ghenv, rules=resolve_rules(_get("rules"), _gh_file_path()),
+        stair_type=_get("stair_type"), floor_height=_get("floor_height"),
+        start=scaled(start_in, to_mm), direction=(math.cos(rot), math.sin(rot)),
+        width=_get("width"), landing_depth=_get("landing_depth"),
+        spiral_radius=_get("spiral_radius"), turn_angle=_get("turn_angle"), turn=_get("turn"),
+        riser_count=_get("riser_count"), tread_depth=_get("tread_depth"),
+        flight1_risers=_get("flight1_risers"),
+        opening=_curve_in_mm(sg, _get("opening"), to_mm), options=options,
+        path=_curve_in_mm(sg, _get("path"), to_mm), location=_get("location"))
+    stair = r["stair"]
+    geo = sg.run_geometry(stair)
+    ann = sg.run_annotation(stair, False)
+    msgs = r["messages"] + geo["messages"] + ann["messages"]
+
+    fits, bmsg = sg.boundary_check(stair, scaled(sg._to_curve(_get("boundary")), to_mm))
+    if bmsg:
+        msgs.append(("remark" if fits else "warning", bmsg))
+        r["report"] += "\n\nBoundary: " + bmsg
+
+    units_line = ("Rhino units: {} (tolerance {:g} mm, angle {:g} deg). Values in this "
+                  "report are in mm.").format(unit_name, tol_mm, angle_tol)
+    if abs(to_mm - 1.0) > 1e-12:
+        units_line += " Geometry is converted to {}.".format(unit_name.lower())
+    r["report"] = (r["report"] or "") + "\n\n" + units_line
+    if tol_mm > 1.0:
+        msgs.append(("warning", "The document tolerance is {:g} mm: coarser than 1 mm, so solids "
+                                "and the boundary check may be inaccurate.".format(tol_mm)))
+
+    # geometry back to model units (copies; the library's own objects stay in mm)
+    out = {k: scaled(geo[k], to_model) for k in ("solids", "treads", "risers", "stringers",
+                                                  "landings")}
+    out.update({k: scaled(ann[k], to_model) for k in ("numbers_pt", "arrows", "up_pt")})
+
+    if globals().get("bake"):
+        if stair is None:
+            msgs.append(("warning", "Nothing to bake: the stair could not be designed."))
+        else:
+            layer = _get("bake_layer") or "03_ARCH::A-STAIR"
+            text = _get("text_layer")
+            text = layer if text in (None, "same") else (text or None)
+            msgs.append(("remark", sg.bake(
+                stair, out["solids"], layer, text, out["numbers_pt"], ann["numbers_txt"],
+                out["arrows"], out["up_pt"], ann["up_txt"])))
+
+    sg.post_messages(ghenv, msgs)
+    ghenv.Component.Message = r["status"]
+
+    solids, treads, risers = out["solids"], out["treads"], out["risers"]
+    stringers, landings = out["stringers"], out["landings"]
+    report, status = r["report"], r["status"]
+    n_risers, riser_h, tread_d = r["n_risers"], r["riser_h"], r["tread_d"]  # mm
+    flights, headroom, fits_boundary = r["flights"], r["headroom"], fits
+    numbers_pt, numbers_txt, arrows = out["numbers_pt"], ann["numbers_txt"], out["arrows"]
+    up_pt, up_txt = out["up_pt"], ann["up_txt"]
 
 
 import math
 import scriptcontext as _sc
 
+_guid = ghenv.Component.InstanceGuid
 _inputs = [p.NickName for p in ghenv.Component.Params.Input]
-_key = "stairgen_built_{}_{}".format(ghenv.Component.InstanceGuid, len(EXPECTED_INPUTS))
-if (_inputs != EXPECTED_INPUTS or REBUILD) and not _sc.sticky.get(_key):
+_key = "stairgen_built_{}_{}".format(_guid, len(EXPECTED_INPUTS))
+_rebuild_key = "stairgen_rebuilt_{}".format(_guid)
+if REBUILD:
+    # once per switch to True (the old check never rebuilt after the first setup)
+    _do_setup = not _sc.sticky.get(_rebuild_key)
+    _sc.sticky[_rebuild_key] = True
+else:
+    _sc.sticky.pop(_rebuild_key, None)
+    _do_setup = _inputs != EXPECTED_INPUTS and not _sc.sticky.get(_key)
+
+if _do_setup:
     # set the component up once the current solution has finished
     _sc.sticky[_key] = True
     import Grasshopper as _gh
     _doc = ghenv.Component.OnPingDocument()
     _doc.ScheduleSolution(10, _gh.Kernel.GH_Document.GH_ScheduleDelegate(_setup))
     print("Setting up the Stair Generator component...")
-elif not _sc.sticky.get("stairgen_refresh_{}_{}".format(ghenv.Component.InstanceGuid, VERSION)):
-    _sc.sticky["stairgen_refresh_{}_{}".format(ghenv.Component.InstanceGuid, VERSION)] = True
+elif not _sc.sticky.get("stairgen_refresh_{}_{}".format(_guid, VERSION)):
+    _sc.sticky["stairgen_refresh_{}_{}".format(_guid, VERSION)] = True
     import Grasshopper as _gh
     ghenv.Component.OnPingDocument().ScheduleSolution(
         10, _gh.Kernel.GH_Document.GH_ScheduleDelegate(_refresh))
 else:
-    _options = ["{} = {}".format(k, globals()[k]) for k in OPTION_INPUTS
-                if globals().get(k) is not None]
-    if str(globals().get("stringer_on") or "yes").lower() == "no":
-        _options.append("stringer_thk = 0")
-    _rot = math.radians(float(globals().get("rotation") or 0.0))
-    _r = _sg.run_design(
-        ghenv, rules=_get("rules"), stair_type=_get("stair_type"),
-        floor_height=_get("floor_height"), start=_get("start"),
-        direction=(math.cos(_rot), math.sin(_rot)), width=_get("width"),
-        landing_depth=_get("landing_depth"), spiral_radius=_get("spiral_radius"),
-        turn_angle=_get("turn_angle"), turn=_get("turn"), riser_count=_get("riser_count"),
-        tread_depth=_get("tread_depth"), flight1_risers=_get("flight1_risers"),
-        opening=_get("opening"), options=_options, path=_get("path"), location=_get("location"))
-    _stair = _r["stair"]
-    _geo = _sg.run_geometry(_stair)
-    _ann = _sg.run_annotation(_stair, False)
-    _msgs = _r["messages"] + _geo["messages"] + _ann["messages"]
-
-    fits_boundary, _bmsg = _sg.boundary_check(_stair, _sg._to_curve(_get("boundary")))
-    if _bmsg:
-        _msgs.append(("remark" if fits_boundary else "warning", _bmsg))
-        _r["report"] += "\n\nBoundary: " + _bmsg
-
-    if globals().get("bake") and _stair is not None:
-        _layer = _get("bake_layer") or "03_ARCH::A-STAIR"
-        _text = _get("text_layer")
-        _text = _layer if _text in (None, "same") else (_text or None)
-        _msgs.append(("remark", _sg.bake(
-            _stair, _geo["solids"], _layer, _text, _ann["numbers_pt"], _ann["numbers_txt"],
-            _ann["arrows"], _ann["up_pt"], _ann["up_txt"])))
-
-    _sg.post_messages(ghenv, _msgs)
-    ghenv.Component.Message = _r["status"]
-
-    solids = _geo["solids"]
-    treads = _geo["treads"]
-    risers = _geo["risers"]
-    stringers = _geo["stringers"]
-    landings = _geo["landings"]
-    report = _r["report"]
-    status = _r["status"]
-    n_risers = _r["n_risers"]
-    riser_h = _r["riser_h"]
-    tread_d = _r["tread_d"]
-    flights = _r["flights"]
-    headroom = _r["headroom"]
-    numbers_pt = _ann["numbers_pt"]
-    numbers_txt = _ann["numbers_txt"]
-    arrows = _ann["arrows"]
-    up_pt = _ann["up_pt"]
-    up_txt = _ann["up_txt"]
+    try:
+        _run()
+    except InputError as _e:
+        _error(str(_e))
+    except Exception as _e:  # library bug: short message on the component, details in 'out'
+        import traceback
+        traceback.print_exc()
+        _error("Stair generator failed: {}: {}\n(see the 'out' output for details)".format(
+            type(_e).__name__, _e))
