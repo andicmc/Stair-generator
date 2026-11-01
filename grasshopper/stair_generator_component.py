@@ -34,9 +34,12 @@ folders) is found in this order:
 So keeping the library next to the .gh file (e.g. in a "stair-generator" folder)
 works on any computer and any drive letter without editing anything.
 
-Bake: press the Bake button. Everything goes to `bake_layer` (default
-03_ARCH::A-STAIR) as one group. Pick a `text_layer` to put the step numbers, arrows
-and UP label on another layer. Missing layers are created.
+Bake: press the Bake button. Everything goes to `bake_layer` as one group.
+Layers are typed as full paths, like Elefont: Parent::Child::Grandchild
+(e.g. 03_ARCH::A-STAIR). Empty = the office default in DEFAULT_BAKE_LAYER.
+`text_layer` is where the step numbers, arrows and UP label go:
+  empty or "same" = the bake layer, "none" = no annotation, or a layer path.
+Missing layers are created.
 
 DESIGN AID ONLY - NOT A CODE COMPLIANCE CERTIFICATION.
 """
@@ -176,31 +179,11 @@ def _import_library():
             folder, type(e).__name__, e)
     return module, None
 
-# --- layer library (Parent::Child), edit to suit -----------------------------------
-LAYERS = [
-    "00_REF::REF-CAD", "00_REF::REF-IMAGE", "00_REF::REF-GRID",
-    "01_SITE::C-TOPO", "01_SITE::C-PROP", "01_SITE::C-ROAD", "01_SITE::C-CONTEXT",
-    "02_MASSING::M-MASS", "02_MASSING::M-FLOR-PLATE", "02_MASSING::M-OPTION-A", "02_MASSING::M-OPTION-B",
-    "03_ARCH::A-WALL-EXT", "03_ARCH::A-WALL-INT", "03_ARCH::A-FLOR", "03_ARCH::A-ROOF", "03_ARCH::A-DOOR",
-    "03_ARCH::A-GLAZ", "03_ARCH::A-STAIR", "03_ARCH::A-RAIL", "03_ARCH::A-CEIL",
-    "04_STRUCT::S-FNDN", "04_STRUCT::S-COLS", "04_STRUCT::S-BEAM", "04_STRUCT::S-SLAB",
-    "05_FACADE::F-PANEL", "05_FACADE::F-MULLION", "05_FACADE::F-FIN",
-    "06_INTERIOR::I-FURN", "06_INTERIOR::I-FIXT",
-    "07_LANDSCAPE::L-PLNT", "07_LANDSCAPE::L-HARD",
-    "08_GH::GH-INPUT", "08_GH::GH-MASSING", "08_GH::GH-MASSING::GH-MASSING-FLOR",
-    "08_GH::GH-FACADE", "08_GH::GH-FACADE::GH-FACADE-PANEL", "08_GH::GH-FACADE::GH-FACADE-MULLION",
-    "08_GH::GH-FACADE::GH-FACADE-FIN", "08_GH::GH-STRUCT", "08_GH::GH-STRUCT::GH-STRUCT-COLS",
-    "08_GH::GH-STRUCT::GH-STRUCT-BEAM", "08_GH::GH-ANALYSIS", "08_GH::GH-ARCHIVE",
-    "09_DOC::D-MAKE2D", "09_DOC::D-DIM", "09_DOC::D-TEXT", "09_DOC::D-HATCH", "09_DOC::D-SECTION",
-    "09_DOC::D-TITLE",
-    "10_PRES::P-PEOPLE", "10_PRES::P-VEHICLE", "10_PRES::P-LIGHT", "10_PRES::P-CAMERA",
-    "99_WIP::WIP", "99_WIP::TRASH",
-]
-
-
-def _layer_items(default):
-    items = [(name.split("::")[-1] + "  (" + name.split("::")[0] + ")", name) for name in LAYERS]
-    return items, LAYERS.index(default)
+# --- bake layers: typed as full paths, like Elefont (Parent::Child) ---------------
+# Office layer standard defaults; used when the layer input is empty.
+DEFAULT_BAKE_LAYER = "03_ARCH::A-STAIR"
+DEFAULT_TEXT_LAYER = "same"  # "same" = bake layer, "none" = no annotation, or a path
+LAYER_SEPARATOR = "::"
 
 
 # --- controls created by the setup -------------------------------------------------
@@ -208,7 +191,7 @@ def _layer_items(default):
 # (input, "slider", (min, max, default))
 # (input, "point" | "curve", hint)      empty parameter: right-click > Set one ...
 # (input, "button", label)
-_BAKE_ITEMS, _BAKE_DEFAULT = _layer_items("03_ARCH::A-STAIR")
+# (input, "text", default text)       a panel you type in (layer paths)
 CONTROLS = [
     ("stair_type", "list", [("Straight", "straight"), ("L-shaped", "L"),
                             ("U-shaped", "U"), ("Spiral", "spiral")], 0),
@@ -235,8 +218,8 @@ CONTROLS = [
     ("tread_thk", "slider", (0, 100, 40)),
     ("riser_thk", "slider", (0, 50, 20)),       # 0 = open risers
     ("nosing", "slider", (0, 50, 0)),
-    ("bake_layer", "list", _BAKE_ITEMS, _BAKE_DEFAULT),
-    ("text_layer", "list", [("Same as bake layer", "same"), ("No annotation", "")] + _BAKE_ITEMS, 0),
+    ("bake_layer", "text", DEFAULT_BAKE_LAYER),
+    ("text_layer", "text", DEFAULT_TEXT_LAYER),
     ("bake", "button", "Bake stair"),
 ]
 # shown as a label to the left of each control
@@ -264,11 +247,11 @@ DESCRIPTIONS = {
     "tread_thk": "Tread thickness (mm)",
     "riser_thk": "Riser board thickness (0 = open risers)",
     "nosing": "Tread overhang past the riser (mm)",
-    "bake_layer": "Bake: layer for the stair",
-    "text_layer": "Bake: layer for numbers, arrows, UP label",
+    "bake_layer": "Bake: layer path for the stair,\ne.g. 03_ARCH::A-STAIR (empty = default)",
+    "text_layer": "Bake: layer path for numbers, arrows, UP\n(same = bake layer, none = no text)",
     "bake": "Press to bake the stair into Rhino",
 }
-VERSION = 9  # bump when CONTROLS change: refreshes drop-downs, labels and groups once
+VERSION = 10  # bump when CONTROLS change: refreshes drop-downs, labels and groups once
 # the controls are laid out in these groups, top to bottom: (title, inputs, ARGB colour)
 SECTIONS = [
     ("1. General", ["stair_type", "turn", "start", "rotation", "path", "location", "boundary",
@@ -313,7 +296,8 @@ def _setup(doc):
     kept_in = {p.NickName: list(p.Sources) for p in comp.Params.Input}
     kept_out = {p.NickName: list(p.Recipients) for p in comp.Params.Output}
     if REBUILD:
-        kinds = (GH_NumberSlider, GH_ValueList, GH_ButtonObject, Param_Point, Param_Curve)
+        kinds = (GH_NumberSlider, GH_ValueList, GH_ButtonObject, GH_Panel, Param_Point,
+                 Param_Curve)
         for o in [s for v in kept_in.values() for s in v if isinstance(s, kinds)]:
             doc.RemoveObject(o, False)
         for o in [r for v in kept_out.values() for r in v if isinstance(r, GH_Panel)]:
@@ -378,6 +362,9 @@ def _setup(doc):
             obj.SetSliderValue(System.Decimal(val))
             obj.NickName = name
             width = 260
+        elif kind == "text":
+            obj = _text_panel(control[2])
+            width = 260
         elif kind == "button":
             obj = GH_ButtonObject()
             obj.CreateAttributes()
@@ -429,6 +416,27 @@ def _tidy(doc, names):
 LABEL_TAG = "stairgen-label"
 
 
+def _text_panel(text):
+    """A one-line panel to type a value in (used for layer paths)."""
+    import System.Drawing as sd
+    from Grasshopper.Kernel.Special import GH_Panel
+    panel = GH_Panel()
+    panel.CreateAttributes()
+    panel.NickName = ""
+    panel.UserText = text
+    panel.Properties.Multiline = False
+    panel.Attributes.Bounds = sd.RectangleF(0, 0, 260, 22)
+    return panel
+
+
+def list_choice_to_text(name, expression):
+    """Value of an old layer drop-down item, as the text for the new layer panel."""
+    value = (expression or "").strip().strip('"')
+    if name == "text_layer" and value == "":
+        return "none"  # the old "No annotation" item
+    return value
+
+
 def _refresh(doc):
     """Bring existing drop-downs up to date, then lay the controls out in their groups."""
     from Grasshopper.Kernel.Special import GH_ValueList, GH_ValueListItem
@@ -437,6 +445,17 @@ def _refresh(doc):
 
     for p in comp.Params.Input:
         c = controls.get(p.NickName)
+        if c is not None and c[1] == "text":
+            # an old drop-down (v9 layer lists) becomes a panel holding the chosen value
+            for vl in [s for s in p.Sources if isinstance(s, GH_ValueList)]:
+                chosen = [i.Expression for i in vl.SelectedItems]
+                panel = _text_panel(list_choice_to_text(c[0], chosen[0]) if chosen else c[2])
+                panel.Attributes.Pivot = vl.Attributes.Pivot
+                doc.AddObject(panel, False)
+                p.RemoveSource(vl)
+                p.AddSource(panel)
+                doc.RemoveObject(vl, False)
+            continue
         if c is None or c[1] != "list":
             continue
         for vl in [s for s in p.Sources if isinstance(s, GH_ValueList)]:
@@ -596,6 +615,39 @@ def _curve_in_mm(sg, value, factor):
     return scaled(curve, factor)
 
 
+def layer_path(name, value, default):
+    """Clean a typed layer path (Parent::Child), or raise. Empty = ``default``."""
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else None
+    text = "" if value is None else str(value).strip().strip('"').strip()
+    if not text:
+        return default
+    parts = [part.strip() for part in text.split(LAYER_SEPARATOR)]
+    if any(not part for part in parts):
+        raise InputError("{} = '{}' is not a valid layer path. Use Parent::Child, "
+                         "e.g. {}.".format(name, text, DEFAULT_BAKE_LAYER))
+    try:
+        from Rhino.DocObjects import Layer
+        bad = [part for part in parts if not Layer.IsValidName(part)]
+    except Exception:  # outside Rhino
+        bad = [part for part in parts if any(ch in part for ch in '{}[]()"')]
+    if bad:
+        raise InputError("{}: '{}' is not a valid Rhino layer name.".format(name, bad[0]))
+    return LAYER_SEPARATOR.join(parts)
+
+
+def bake_layers(bake_value, text_value):
+    """(bake layer path, annotation layer path or None for no annotation)."""
+    layer = layer_path("bake_layer", bake_value, DEFAULT_BAKE_LAYER)
+    raw = "" if text_value is None else str(text_value).strip().strip('"').strip()
+    keyword = (raw or DEFAULT_TEXT_LAYER).lower()
+    if keyword == "same":
+        return layer, layer
+    if keyword == "none":
+        return layer, None
+    return layer, layer_path("text_layer", raw or DEFAULT_TEXT_LAYER, layer)
+
+
 def resolve_rules(rules, gh_file):
     """A relative rule-file path is read from the folder of the .gh file."""
     if not rules or not isinstance(rules, str):
@@ -625,6 +677,8 @@ def _run():
     sg, err = _import_library()
     if sg is None:
         raise InputError(err)
+    # checked on every solution, so a mistyped layer shows before you press Bake
+    layer, text = bake_layers(globals().get("bake_layer"), globals().get("text_layer"))
 
     options = ["{} = {}".format(k, globals()[k]) for k in OPTION_INPUTS
                if globals().get(k) is not None]
@@ -670,9 +724,6 @@ def _run():
         if stair is None:
             msgs.append(("warning", "Nothing to bake: the stair could not be designed."))
         else:
-            layer = _get("bake_layer") or "03_ARCH::A-STAIR"
-            text = _get("text_layer")
-            text = layer if text in (None, "same") else (text or None)
             msgs.append(("remark", sg.bake(
                 stair, out["solids"], layer, text, out["numbers_pt"], ann["numbers_txt"],
                 out["arrows"], out["up_pt"], ann["up_txt"])))

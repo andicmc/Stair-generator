@@ -408,3 +408,55 @@ def test_dotnet_style_list_output_is_converted(project, monkeypatch):
     monkeypatch.setattr(builtins, "_NetList", NetList, raising=False)
     r = run(monkeypatch, project.gh, FakeRhinoDoc("Meters", tol=0.001))
     assert r.g["solids"][0].scale == pytest.approx(0.001)
+
+
+# --- typed layer paths (Elefont style) -------------------------------------------------
+def _bake(monkeypatch, project, **values):
+    return run(monkeypatch, project.gh, FakeRhinoDoc(), bake=True, **values)
+
+
+@pytest.mark.parametrize("bake_layer,text_layer,expected", [
+    (None, None, ("03_ARCH::A-STAIR", "03_ARCH::A-STAIR")),          # office defaults
+    ("", "same", ("03_ARCH::A-STAIR", "03_ARCH::A-STAIR")),
+    ("PROJ::Stairs::Core-A", None, ("PROJ::Stairs::Core-A", "PROJ::Stairs::Core-A")),
+    (" 03_ARCH :: A-STAIR ", "09_DOC::D-TEXT", ("03_ARCH::A-STAIR", "09_DOC::D-TEXT")),
+    ('"03_ARCH::A-STAIR"', "NONE", ("03_ARCH::A-STAIR", None)),      # no annotation
+    ("Stairs", "Same", ("Stairs", "Stairs")),                         # top-level layer
+])
+def test_layer_paths(project, monkeypatch, bake_layer, text_layer, expected):
+    r = _bake(monkeypatch, project, bake_layer=bake_layer, text_layer=text_layer)
+    assert r.errors == []
+    assert (r.calls["bake"][2], r.calls["bake"][3]) == expected
+
+
+@pytest.mark.parametrize("value", ["03_ARCH::", "::A-STAIR", "03_ARCH::::A-STAIR", "A{STAIR}"])
+def test_bad_layer_path_is_reported_before_baking(project, monkeypatch, value):
+    r = run(monkeypatch, project.gh, FakeRhinoDoc(), bake_layer=value)  # Bake not pressed
+    assert r.errors and "bake_layer" in r.errors[0]
+    assert "design" not in r.calls
+
+
+def test_bad_text_layer(project, monkeypatch):
+    r = _bake(monkeypatch, project, text_layer="09_DOC::")
+    assert r.errors and "text_layer" in r.errors[0] and "bake" not in r.calls
+
+
+def test_layer_controls_are_text_panels_with_office_defaults():
+    ns = {}
+    exec(compile(SOURCE.split("\nimport math\nimport scriptcontext")[0], SCRIPT, "exec"), ns)
+    controls = {c[0]: c for c in ns["CONTROLS"]}
+    assert controls["bake_layer"][1:] == ("text", "03_ARCH::A-STAIR")
+    assert controls["text_layer"][1:] == ("text", "same")
+    assert ns["VERSION"] == 10  # existing .gh files migrate their drop-downs once
+
+
+@pytest.mark.parametrize("name,expression,text", [
+    ("bake_layer", '"03_ARCH::A-STAIR"', "03_ARCH::A-STAIR"),
+    ("text_layer", '"same"', "same"),
+    ("text_layer", '""', "none"),                      # old "No annotation"
+    ("text_layer", '"09_DOC::D-TEXT"', "09_DOC::D-TEXT"),
+])
+def test_old_drop_down_choice_is_kept(name, expression, text):
+    ns = {}
+    exec(compile(SOURCE.split("\nimport math\nimport scriptcontext")[0], SCRIPT, "exec"), ns)
+    assert ns["list_choice_to_text"](name, expression) == text

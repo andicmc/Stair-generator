@@ -23,7 +23,13 @@ Python 3 Script component, built on the `stairgen` / `stairgen_rhino` library.
 | `tests/test_component.py` | Tests of the component logic with stand-ins for Rhino/Grasshopper |
 
 **The `stairgen` and `stairgen_rhino` library is not in this repository yet.**
-Copy it from the project folder into the repo (e.g. `stair-generator/`) and commit it.
+The component needs it to run. Copy it from the project folder into the repo
+(e.g. `stair-generator/`) and commit it.
+
+**Open question (units):** in a document that is not in mm, the component converts the
+geometry it passes to `bake()` to model units. This is right only if `bake()` bakes the
+geometry it is given and does not rebuild it from the stair object. Not checked yet,
+because the library is not available here. Millimetre documents are not affected.
 
 ## Install on a computer
 
@@ -59,12 +65,30 @@ If it is not found, the component turns red and lists every place it looked.
   environment variable or `STAIRGEN_PATH`. A relative `rules` path needs a saved `.gh`.
 - Bake uses the active Rhino document.
 
+## Bake layers
+
+Layers are typed as full paths, like Elefont: `Parent::Child::Grandchild`.
+
+| Input | Empty | Other values |
+|---|---|---|
+| `bake_layer` | `03_ARCH::A-STAIR` (office default) | any layer path |
+| `text_layer` | same as `bake_layer` | `same`, `none` (no annotation), or a layer path |
+
+- Missing layers are created when baking.
+- Spaces around `::` are removed. An empty level (`03_ARCH::`) or a name Rhino does not
+  allow gives a red message straight away, before you press Bake.
+- The office defaults are `DEFAULT_BAKE_LAYER` and `DEFAULT_TEXT_LAYER` at the top of the script.
+- Opening a v01 `.gh`: the old layer drop-downs are replaced once by text panels that keep
+  the layer you had chosen (`No annotation` becomes `none`).
+
 ## Script settings
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `STAIRGEN_PATH` | `""` | Library folder; empty = find it |
 | `REBUILD` | `False` | `True` rebuilds the controls once (each time you set it to True) |
+| `DEFAULT_BAKE_LAYER` | `03_ARCH::A-STAIR` | Bake layer when `bake_layer` is empty |
+| `DEFAULT_TEXT_LAYER` | `same` | Annotation layer when `text_layer` is empty |
 | `RELOAD_LIBRARY` | `True` | Re-import the library every solution (for library editing; set False for speed) |
 
 ## Tests
