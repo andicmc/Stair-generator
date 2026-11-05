@@ -1,0 +1,107 @@
+{
+  "_comment": "All building-code limits used by the core. Values in mm / degrees. Every entry has a source note; 'verify' means Andi has not yet confirmed it against the OBC.",
+  "stairs": {
+    "rise_max_mm": {
+      "value": 200,
+      "source": "OBC 9.8.4.1 — verify"
+    },
+    "rise_min_mm": {
+      "value": 125,
+      "source": "OBC 9.8.4.1 — verify"
+    },
+    "run_min_mm": {
+      "value": 255,
+      "source": "OBC 9.8.4.2 — verify"
+    },
+    "run_max_mm": {
+      "value": 355,
+      "source": "OBC 9.8.4.2 — verify"
+    },
+    "width_min_mm": {
+      "value": 860,
+      "source": "OBC 9.8.2.1 — verify"
+    },
+    "headroom_min_mm": {
+      "value": 1950,
+      "source": "OBC 9.8.2.2 — verify"
+    },
+    "nosing_max_mm": {
+      "value": 25,
+      "source": "OBC 9.8.4.3 — verify (nosing projection)"
+    },
+    "max_rise_per_flight_mm": {
+      "value": 3700,
+      "source": "OBC 9.8.3.3 — verify (max vertical rise between landings)"
+    },
+    "uniformity_tol_mm": {
+      "value": 5,
+      "source": "OBC 9.8.4.4 — verify (rise/run variation)"
+    },
+    "landing_depth_min_equals_width": {
+      "value": true,
+      "source": "OBC 9.8.6.3 — verify (landing length >= stair width)"
+    },
+    "landing_depth_min_mm": {
+      "value": 860,
+      "source": "OBC 9.8.6.3 — verify"
+    },
+    "winder_max_turn_per_set_deg": {
+      "value": 90,
+      "source": "OBC 9.8.4.7 — verify (winders: max 90° per set)"
+    },
+    "winder_turn_per_tread_deg": {
+      "value": 30,
+      "source": "OBC 9.8.4.7 — verify (30° per winder)"
+    },
+    "walkline_offset_mm": {
+      "value": 300,
+      "source": "OBC 9.8.4.6 — verify (run of curved/winder treads measured 300 mm from the narrow edge)"
+    },
+    "spiral_min_run_at_walkline_mm": {
+      "value": 255,
+      "source": "OBC 9.8.4.6 — verify"
+    },
+    "winder_min_run_at_walkline_mm": {
+      "value": 0,
+      "source": "OBC 9.8.4.7 — verify: 30 deg winders within a dwelling unit have no walk-line run requirement; set 255 if the stair is not in a dwelling unit"
+    }
+  },
+  "guards": {
+    "guard_height_residential_mm": {
+      "value": 900,
+      "source": "OBC 9.8.8.3 — verify (within a dwelling unit)"
+    },
+    "guard_height_other_mm": {
+      "value": 1070,
+      "source": "OBC 9.8.8.3 — verify (exterior / other)"
+    },
+    "handrail_height_min_mm": {
+      "value": 865,
+      "source": "OBC 9.8.7.4 — verify"
+    },
+    "handrail_height_max_mm": {
+      "value": 965,
+      "source": "OBC 9.8.7.4 — verify"
+    },
+    "max_opening_sphere_mm": {
+      "value": 100,
+      "source": "OBC 9.8.8.5 — verify (100 mm sphere)"
+    },
+    "climbable_zone_low_mm": {
+      "value": 140,
+      "source": "OBC 9.8.8.6 — verify (no climbable elements 140–900 mm)"
+    },
+    "climbable_zone_high_mm": {
+      "value": 900,
+      "source": "OBC 9.8.8.6 — verify"
+    },
+    "handrail_extension_mm": {
+      "value": 300,
+      "source": "OBC 9.8.7.5 — verify (extension at top/bottom, non-dwelling)"
+    },
+    "handrail_clearance_mm": {
+      "value": 50,
+      "source": "OBC 9.8.7.6 — verify (clearance to wall)"
+    }
+  }
+}
