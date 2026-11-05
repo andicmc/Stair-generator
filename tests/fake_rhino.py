@@ -183,3 +183,81 @@ def install(monkeypatch, doc):
     for name in [n for n in sys.modules if n.split(".")[0] in ("adapters",)]:
         monkeypatch.delitem(sys.modules, name)
     return rhino
+
+
+# --- additions for the guard adapter ------------------------------------------------------
+def _cross(a, b):
+    return Vector3d(a.Y * b.Z - a.Z * b.Y, a.Z * b.X - a.X * b.Z, a.X * b.Y - a.Y * b.X)
+
+
+Vector3d.CrossProduct = staticmethod(_cross)
+Vector3d.XAxis = Vector3d(1, 0, 0)
+
+
+def _vsub(a, b):
+    return Vector3d(a.X - b.X, a.Y - b.Y, a.Z - b.Z)
+
+
+Point3d.__sub__ = _vsub
+Vector3d.__neg__ = lambda self: Vector3d(-self.X, -self.Y, -self.Z)
+
+
+class Interval(object):
+    def __init__(self, a, b):
+        self.T0, self.T1 = a, b
+
+
+class Plane(object):
+    def __init__(self, origin, xdir, ydir):
+        self.Origin, self.XAxis, self.YAxis = origin, xdir, ydir
+
+    def PointAt(self, u, v):
+        o, x, y = self.Origin, self.XAxis, self.YAxis
+        return Point3d(o.X + u * x.X + v * y.X, o.Y + u * x.Y + v * y.Y, o.Z + u * x.Z + v * y.Z)
+
+
+class Rectangle3d(object):
+    def __init__(self, plane, ix, iy):
+        self.plane, self.ix, self.iy = plane, ix, iy
+
+    def ToNurbsCurve(self):
+        p, a, b = self.plane, self.ix, self.iy
+        pts = [p.PointAt(a.T0, b.T0), p.PointAt(a.T1, b.T0), p.PointAt(a.T1, b.T1), p.PointAt(a.T0, b.T1)]
+        return PolylineCurve(pts + [pts[0]])
+
+
+class Circle(object):
+    def __init__(self, plane, r):
+        self.plane, self.r = plane, r
+
+    def ToNurbsCurve(self):
+        pts = [self.plane.PointAt(self.r * math.cos(a * math.pi / 8), self.r * math.sin(a * math.pi / 8))
+               for a in range(16)]
+        return PolylineCurve(pts + [pts[0]])
+
+
+class Line(object):
+    def __init__(self, a, b):
+        self.From, self.To = a, (b if isinstance(b, Point3d) else Point3d(a.X + b.X, a.Y + b.Y, a.Z + b.Z))
+
+
+def _translate(self, v):
+    for p in self.curve.pts:
+        p.X, p.Y, p.Z = p.X + v.X, p.Y + v.Y, p.Z + v.Z
+    return True
+
+
+Brep.Translate = _translate
+PolylineCurve.IsClosed = property(lambda self: self.pts[0].DistanceTo(self.pts[-1]) < 1e-9)
+
+_install = install
+
+
+def install(monkeypatch, doc):
+    rhino = _install(monkeypatch, doc)
+    geom = rhino.Geometry
+    for cls in (Interval, Plane, Rectangle3d, Circle, Line):
+        setattr(geom, cls.__name__, cls)
+    geom.Intersect = types.SimpleNamespace(Intersection=types.SimpleNamespace())
+    geom.Mesh = type("Mesh", (), {})
+    return rhino

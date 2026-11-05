@@ -102,6 +102,10 @@
     "handrail_clearance_mm": {
       "value": 50,
       "source": "OBC 9.8.7.6 — verify (clearance to wall)"
+    },
+    "stair_triangle_sphere_mm": {
+      "value": 150,
+      "source": "OBC 9.8.8.5(2) — verify (triangular opening between bottom rail, tread and riser: 150 mm sphere)"
     }
   }
 }

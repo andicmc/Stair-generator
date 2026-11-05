@@ -1,7 +1,12 @@
 # Stair Generator (Grasshopper, Rhino 8)
 
-A parametric stair generator (straight, L, U, spiral) as one Grasshopper
-Python 3 Script component, built on the `stairgen` / `stairgen_rhino` library.
+Parametric stairs (straight, L, U, U with two landings, spiral; winders, stringers,
+code checks) and guards / railings for Rhino 8 Grasshopper, built as a pure-Python core
+(`core/`) with thin RhinoCommon adapters. See `CLAUDE.md` for the rules, `TESTING.md`
+for what to check in Rhino.
+
+The v01 component (`grasshopper/stair_generator_component.py`) is the older
+all-in-one component built on the `stairgen` / `stairgen_rhino` library.
 
 > Design aid only, not a code compliance certification.
 
@@ -18,7 +23,13 @@ Python 3 Script component, built on the `stairgen` / `stairgen_rhino` library.
 
 | Path in this repo | What it is |
 |---|---|
-| `grasshopper/stair_generator_component.py` | Source of the component script (paste into the component) |
+| `core/stairs`, `core/guards` | Pure-Python cores (no Rhino): stair and guard design, code checks, BOM |
+| `adapters/*_rhino.py` | Thin RhinoCommon adapters |
+| `grasshopper/stair_component_v2.py`, `grasshopper/guard_component.py` | **v2 components** (paste into Python 3 Script components) |
+| `config/code_limits.json` | Every code limit, with source notes ("verify") |
+| `docs/guard_path.md` | Stair → guard interface contract |
+| `AUDIT_staircase.md`, `ASSUMPTIONS.md`, `TESTING.md`, `CHANGELOG.md`, `BACKLOG.md` | Project records |
+| `grasshopper/stair_generator_component.py` | v01 component (needs the old `stairgen` library) |
 | `grasshopper/*_v01.gh` / `*_v01.3dm` | v01 definition and model as uploaded. **The .gh still holds the old script with the `F:` path** (see below) |
 | `tests/test_component.py` | Tests of the component logic with stand-ins for Rhino/Grasshopper |
 

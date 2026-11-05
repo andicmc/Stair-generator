@@ -107,9 +107,12 @@ def _flight(b, frame, z0, n_risers, rise, run, is_first, is_last):
                         "nosing_right": nosing_r, "tread_centre": frame.pt((s0 + s1) / 2, 0.0, z),
                         "z": z, "direction": frame.d, "run": run, "rise": rise})
 
-    # guard path along the nosing line, ending at the landing / floor edge
+    # guard path along the nosing line, ending at the landing / floor edge. A flight that
+    # leaves a landing starts its line at the landing's exit edge (not over the landing),
+    # so the plan path never doubles back.
     for side, y in (("left", w / 2), ("right", -w / 2)):
-        pts = [frame.pt(i * run - p.nosing, y, z0 + (i + 1) * rise) for i in range(n_treads)]
+        pts = [frame.pt((i * run - p.nosing) if (i or is_first) else 0.0, y,
+                        z0 + (i + 1) * rise) for i in range(n_treads)]
         pts.append(frame.pt(plan_length, y, z_end))
         b._guard(side, "flight", pts)
 

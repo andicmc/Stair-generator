@@ -43,7 +43,7 @@ Each side is one 3D polyline from the bottom of the stair to the upper floor:
 
 | segment `kind` | what the points are |
 |---|---|
-| `flight`  | the **nosing line**: one point per tread at the nosing (front-top edge, after the nosing projection), at the stair edge; then the point where the flight meets the landing / upper floor edge (at that surface's height). For a spiral: outer / inner nosing points. |
+| `flight`  | the **nosing line**: one point per tread at the nosing (front-top edge, after the nosing projection), at the stair edge; then the point where the flight meets the landing / upper floor edge (at that surface's height). A flight that leaves a landing starts at the landing's exit edge (its first nosing's overhang over the landing is ignored) so the path never doubles back in plan. For a spiral: outer / inner nosing points. |
 | `landing` | the landing's **walking surface edge** on that side, corner by corner, level. Inner side of a 90° landing = 1–2 points, outer side = 3 points; 180° landing outer side = 4 points. |
 | `winders` | inner side: the newel corner at the bottom and at the top of the winder set (a vertical pair). Outer side: the outer end of each winder's nosing, then the exit edge point. |
 

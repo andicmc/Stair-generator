@@ -33,6 +33,37 @@ these in Rhino 8 / Grasshopper and note anything odd in BACKLOG.md.
 | 17 | document in **metres** | Same stair at 1/1000 scale; sliders still in mm; report says "document: Meters". |
 | 18 | base_pt + rotation 90 | Stair moved and turned; `opening` is still interpreted correctly (draw it in the document frame). |
 
+## Guard / railing — checklist
+
+Set-up: second Python 3 Script component with `grasshopper/guard_component.py`; wire the
+stair's `guard_path` output (text) into the guard's `guard_path` input. Defaults: both
+sides, posts on every tread + corners + ends, 50 mm square posts, 60 × 40 top rail at
+900 mm, balusters at ≤ 100 mm clear, no bottom rail, no handrail.
+
+| # | Settings | Check |
+|---|---|---|
+| G1 | straight stair, defaults | A post at the centre of every tread (base on the tread, inset 25 so its face is flush with the edge) and one on the floor at the top edge. Top rail parallel to the nosing line, 880 mm above it (centre), levelling out just before the floor edge. Balusters from the nosing line to the rail underside, ≤ 100 clear. |
+| G2 | `side = left` | Only the left guard (looking up). |
+| G3 | L stair, defaults | Outer side: the rail levels out onto the landing without a step, turns the corner (post there), picks up the slope of flight 2 before the exit edge. Inner side: posts at the newel corner; the rail rises vertically at the newel (always sharp). |
+| G4 | L + `transition = sharp` | Outer side: sloped rail to the landing edge, vertical gooseneck, level landing rail. |
+| G5 | `height_landing 1070` | Landing rail higher than the flight rail; a step up at the top floor edge. |
+| G6 | `post_rules = max_spacing`, `post_max_spacing 1000` | Posts only at ends, corners and ≤ 1000 apart. `every_n_steps`, `post_every_n 3` → every third tread. |
+| G7 | `post_on_tread = nosing`, `post_tread_offset 60` | Posts 60 mm behind the nosings. |
+| G8 | `post_shape = round / rect / custom` (+ `post_profile` curve) | Profiles; `post_rotation 45`. |
+| G9 | `post_mount = fascia`, `fascia_drop 200` | Posts outside the stringer face, bases 200 below the treads. `embedded` → bases 100 below. |
+| G10 | `bottom_rail = True`, `bottom_gap 90` | Bottom rail 90 clear above the nosing line / landing; TRIANGLE warning (190 mm sphere > 150) — expected on a 200/255 stair; `bottom_gap 20` passes. |
+| G11 | `handrail = True` | Round 42 handrail at 915 mm, 75 mm in from the edge, 300 mm horizontal extensions beyond the bottom and top risers with end returns to the wall; brackets ≤ 1200 apart. `handrail_height 800` → HANDRAIL_HEIGHT warning. |
+| G12 | `infill = horizontal`, `bar_spacing 100` | Bars following the slope; CLIMBABLE warning. `cable` → round cables. |
+| G13 | `infill = glass`, posts `max_spacing 1200` | Glass panels between posts, 15 mm gaps, bottom 90 above the nosing line; clamp points along the bottom edge; BOM lists the glass area. `mesh` → panels with a 25 mm frame. |
+| G14 | `height_flight 850` | GUARD_HEIGHT warning (900 residential); `context = other` → 1070 required. |
+| G15 | U2 stair, winders on | Four landing corner posts (U2); with winders a post on each winder outer end and one at the newel. |
+| G16 | spiral | Outer helix rail with a post per tread; inner side on the column: few posts (60 mm radius). |
+| G17 | curve mode: closed rectangle 3 × 2 m, `post_rules = max_spacing` | Posts at the 4 corners and ≤ 1200 apart, level rail all round, no end posts. |
+| G18 | curve mode: 3D polyline, `base` = a sloped Brep | Rail 900 above the surface along the curve; a post at the bend. |
+| G19 | metre document | Stair + guard chain: guard geometry at the stair's base point at 1/1000 scale. |
+
 ## Known visual simplifications
 - Spiral arcs are 10° polyline segments (treads are planar polygons).
 - No landing framing, no bull-nose, no newels (the guard component adds posts).
+- Rails are one prism per straight segment (not mitred at kinks); round rails are 16-gons.
+- Guard: no newel caps, no bracket geometry (a line from the handrail to the wall).

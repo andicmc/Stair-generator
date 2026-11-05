@@ -20,8 +20,15 @@
       are equal by construction, so no check is needed yet).
 - [ ] v01 `.gh` still embeds the old script; save a v02 `.gh` after pasting.
 
-## Guard / railing (next task)
-- [ ] Component per the brief (stair mode from `guard_path`, curve mode).
+## Guard / railing
+- [ ] Mitred rail joints and smooth (curved) rails on arcs / spirals (currently one prism per
+      segment; round rails as 16-gons).
+- [ ] Newel caps, bracket geometry, baluster shoes.
+- [ ] Glass: clamp geometry; panels across a sharp (vertical) transition are stepped polygons
+      — split into two panels at goosenecks.
+- [ ] Posts on the inner side of a spiral (column): make optional / use the column.
+- [ ] Rail height check of the *built* rail (today the check uses the input heights).
+- [ ] Curve mode: posts aligned to tread positions when the curve is a stair edge drawn by hand.
 
 ## Not in this session
 - Windows and doors (dropped by Andi on 2026-11-05).

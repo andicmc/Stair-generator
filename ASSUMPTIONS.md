@@ -47,6 +47,41 @@
 14. **Defaults**: tread 38 mm, riser 19 mm, nosing 25 mm, stringer 2×12 (286 × 38),
     landing slab 250 mm, slab above 250 mm.
 
+## Guards (core/guards)
+1. **Guard plane** = the vertical plane through the stair edge (nosing line / landing edge)
+   moved `inset` towards the stair; default inset = post size / 2 so post faces are flush
+   with the edge. Posts are centred on that plane; fascia posts move outside it.
+2. **Heights** are to the **top** of the top rail: on flights vertically above the nosing
+   line, on landings / floors / curves above the walking surface. The rail centreline is
+   the height minus half the rail height. Posts stop at the rail underside (`top_rail_gap`).
+3. **Transitions.** `smooth`: the sloped rail continues until it reaches the landing rail
+   height, then runs level (with equal heights that is one nosing before the landing edge);
+   leaving a landing the level rail runs until the next slope line meets it. This needs the
+   landing edge to continue straight from the flight; inner corners (newel, well) are always
+   `sharp` (vertical at the corner). A rail never goes down; where the slope would overshoot
+   it stops and runs level to the edge.
+4. **Posts.** `ends` and `corners` are always on. The bottom end post stands on the first
+   tread (centre of the tread by default); the top end post stands on the floor just beyond
+   the top riser. Corners = plan direction changes > 15° on landings, the newel, and in curve
+   mode any kink. `every_step` puts a post on every tread (centre or `post_tread_offset` from
+   the nosing); posts closer than one post size are merged (ends / corners win).
+5. **Bottom rail** default **off**: on a 200 / 255 stair a bottom rail more than ~20 mm above
+   the nosings lets a > 150 mm sphere through the rail/tread/riser triangle. Balusters then
+   land on the nosing line / walking surface. Glass without a bottom rail starts
+   `glass_bottom_gap` above the nosing line.
+6. **Balusters**: fewest balusters per bay so the clear spacing ≤ `baluster_spacing`;
+   `balusters_per_tread` counts the treads whose centre lies in the bay.
+7. **Handrail**: separate rail at `handrail_offset` from the edge towards the stair, same
+   slope/level logic; horizontal extensions beyond the bottom and top risers (OBC 9.8.7.5 —
+   verify), end returns towards the wall of `handrail_offset` length; brackets every
+   `bracket_spacing`, modelled as a line to the wall.
+8. **Curve mode**: the curve itself is the walking edge; `base` samples heights under its
+   points; `curve_outward` says which side falls away; closed curves get no end posts.
+9. **Code checks** (all "verify"): guard height by context (900 / 1070), handrail 865–965,
+   100 mm sphere for baluster / bar / cable / glass gaps and under a bottom rail (measured
+   perpendicular on flights), the 150 mm sphere in the triangle under a bottom rail on
+   stairs, climbable horizontal elements 140–900 mm above the surface.
+
 ## Code limits (config/code_limits.json)
 All values are marked "verify": rise max 200 / min 125, run min 255 / max 355, width min
 860, headroom min 1950, nosing max 25, max rise per flight 3700, landing depth ≥ width and
