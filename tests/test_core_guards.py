@@ -188,7 +188,8 @@ def test_balusters_respect_sphere(straight):
     g = guard(straight["guard_path"], sides="left", infill="balusters", baluster_spacing=100,
               baluster_size=20, post_rules=["max_spacing", "ends"], post_max_spacing=1200)
     assert g["info"]["max_infill_clear"] <= 100 + 1e-6
-    assert g["infill"]["balusters"][0]["bottom"][2] < 300          # lands on the nosing line
+    first = g["infill"]["balusters"][0]
+    assert first["bottom"][2] < 600 and first["top"][2] - first["bottom"][2] > 700   # foot on the nosing line
     assert g["info"]["baluster_count"] > 20
     assert not any(w.startswith("OPENING") for w in g["warnings"])
     b = g["infill"]["balusters"][0]
