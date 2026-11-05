@@ -50,12 +50,22 @@ class UnitSystem:
     Millimeters = "UnitSystem.Millimeters"
 
 
+class FakeStrings:
+    """Stand-in for RhinoDoc.Strings (document user text)."""
+    def __init__(self, **values):
+        self.values = values
+
+    def GetValue(self, key):
+        return self.values.get(key)
+
+
 class FakeRhinoDoc:
-    def __init__(self, units="Millimeters", tol=0.01, path=None):
+    def __init__(self, units="Millimeters", tol=0.01, path=None, strings=None):
         self.ModelUnitSystem = "UnitSystem." + units
         self.ModelAbsoluteTolerance = tol
         self.ModelAngleToleranceDegrees = 1.0
         self.Path = path
+        self.Strings = FakeStrings(**(strings or {}))
 
 
 class Messages:
@@ -447,7 +457,8 @@ def test_layer_controls_are_text_panels_with_office_defaults():
     controls = {c[0]: c for c in ns["CONTROLS"]}
     assert controls["bake_layer"][1:] == ("text", "03_ARCH::A-STAIR")
     assert controls["text_layer"][1:] == ("text", "same")
-    assert ns["VERSION"] == 10  # existing .gh files migrate their drop-downs once
+    assert ns["VERSION"] == 11  # existing .gh files migrate their drop-downs once
+    assert controls["level_bottom"][1:] == ("text", "") and controls["level_top"][1:] == ("text", "")
 
 
 @pytest.mark.parametrize("name,expression,text", [
@@ -460,3 +471,80 @@ def test_old_drop_down_choice_is_kept(name, expression, text):
     ns = {}
     exec(compile(SOURCE.split("\nimport math\nimport scriptcontext")[0], SCRIPT, "exec"), ns)
     assert ns["list_choice_to_text"](name, expression) == text
+
+
+# --- levels from the project reference ---------------------------------------------
+import json
+
+REFERENCE = json.dumps({"schema_version": 1, "units": "mm", "name": "demo", "grids": [],
+                        "levels": [{"name": "L00", "elevation": 0.0}, {"name": "L01", "elevation": 3200.0},
+                                   {"name": "L02", "elevation": 6100.0}]})
+
+
+def doc_with_reference(units="Millimeters", text=REFERENCE, **kw):
+    return FakeRhinoDoc(units, strings={"project_reference": text}, **kw)
+
+
+def test_level_names_set_floor_height_and_start_z(project, monkeypatch):
+    r = run(monkeypatch, project.gh, doc_with_reference(), stair_type="straight", floor_height=2800,
+            level_bottom="L01", level_top="L02", start=Point3d(10, 20, 999))
+    d = r.calls["design"]
+    assert d["floor_height"] == pytest.approx(2900.0)        # 6100 - 3200, slider ignored
+    assert (d["start"].X, d["start"].Y, d["start"].Z) == (10, 20, 3200.0)
+    assert "Levels: L01 (3200 mm) to L02 (6100 mm)" in r.g["report"]
+    assert r.errors == []
+
+
+def test_empty_level_names_fall_back_to_floor_height(project, monkeypatch):
+    r = run(monkeypatch, project.gh, doc_with_reference(), stair_type="straight", floor_height=2800,
+            level_bottom="", level_top=None, start=Point3d(1, 2, 3))
+    assert r.calls["design"]["floor_height"] == 2800 and r.calls["design"]["start"].Z == 3
+    assert "Levels:" not in r.g["report"]
+
+
+def test_level_names_without_reference_is_clear_error(project, monkeypatch):
+    r = run(monkeypatch, project.gh, FakeRhinoDoc(), stair_type="straight",
+            level_bottom="L00", level_top="L01")
+    assert r.errors and "no project reference" in r.errors[0] and "design" not in r.calls
+
+
+def test_only_one_level_name_is_an_error(project, monkeypatch):
+    r = run(monkeypatch, project.gh, doc_with_reference(), stair_type="straight", level_bottom="L00")
+    assert r.errors and "both level_bottom and level_top" in r.errors[0]
+
+
+def test_unknown_level_lists_known_levels(project, monkeypatch):
+    r = run(monkeypatch, project.gh, doc_with_reference(), stair_type="straight",
+            level_bottom="L00", level_top="Roof")
+    assert r.errors and "Roof" in r.errors[0] and "L00, L01, L02" in r.errors[0]
+
+
+def test_top_below_bottom_is_an_error(project, monkeypatch):
+    r = run(monkeypatch, project.gh, doc_with_reference(), stair_type="straight",
+            level_bottom="L02", level_top="L00")
+    assert r.errors and "not above" in r.errors[0]
+
+
+def test_wired_reference_overrides_document(project, monkeypatch):
+    wired = json.dumps({"schema_version": 1, "units": "m", "levels": [
+        {"name": "A", "elevation": 0.0}, {"name": "B", "elevation": 3.0}]})
+    r = run(monkeypatch, project.gh, doc_with_reference(), stair_type="straight",
+            level_bottom="a", level_top="b", reference=wired)          # case-insensitive names
+    assert r.calls["design"]["floor_height"] == pytest.approx(3000.0)  # metres -> mm
+
+
+def test_reference_in_metre_document_and_start_conversion(project, monkeypatch):
+    ref_m = json.dumps({"schema_version": 1, "units": "m", "levels": [
+        {"name": "L00", "elevation": 0.0}, {"name": "L01", "elevation": 2.75}]})
+    r = run(monkeypatch, project.gh, doc_with_reference("Meters", ref_m, tol=0.001), stair_type="straight",
+            level_bottom="L00", level_top="L01", start=Point3d(1.0, 0.5, 9.0))
+    d = r.calls["design"]
+    assert d["floor_height"] == pytest.approx(2750.0)
+    assert (d["start"].X, d["start"].Z) == (1000.0, 0.0)              # mm, on the bottom level
+
+
+def test_wrong_schema_version_is_rejected(project, monkeypatch):
+    bad = json.dumps({"schema_version": 2, "units": "mm", "levels": []})
+    r = run(monkeypatch, project.gh, doc_with_reference(text=bad), stair_type="straight",
+            level_bottom="L00", level_top="L01")
+    assert r.errors and "schema_version 2" in r.errors[0]

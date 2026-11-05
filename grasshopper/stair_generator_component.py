@@ -205,6 +205,8 @@ CONTROLS = [
     ("opening", "curve", "floor opening (right-click > Set one Curve)"),
     ("slab_thk", "slider", (0, 600, 250)),      # upper floor thickness, for headroom
     ("floor_height", "slider", (2000, 5000, 2800)),
+    ("level_bottom", "text", ""),               # level names from the project reference;
+    ("level_top", "text", ""),                  # empty = use floor_height
     ("width", "slider", (600, 2000, 900)),
     ("riser_count", "slider", (0, 30, 0)),      # 0 = auto
     ("tread_depth", "slider", (0, 400, 0)),     # 0 = auto (not used for spiral or a path)
@@ -233,7 +235,9 @@ DESCRIPTIONS = {
     "boundary": "Closed curve the stair must stay inside\n(warning + fits_boundary output)",
     "opening": "Floor opening above (closed curve):\nturns on the headroom check",
     "slab_thk": "Upper floor slab thickness (mm):\nceiling = floor height - slab",
-    "floor_height": "Floor-to-floor height (mm)",
+    "floor_height": "Floor-to-floor height (mm)\n(ignored when both level names are set)",
+    "level_bottom": "Bottom level name from the project\nreference (empty = floor_height slider)",
+    "level_top": "Top level name (with level_bottom):\nfloor height and start Z come from the levels",
     "width": "Clear width between stringers (mm)",
     "riser_count": "Number of risers (0 = auto)",
     "tread_depth": "Tread depth / run (0 = auto)",
@@ -251,17 +255,17 @@ DESCRIPTIONS = {
     "text_layer": "Bake: layer path for numbers, arrows, UP\n(same = bake layer, none = no text)",
     "bake": "Press to bake the stair into Rhino",
 }
-VERSION = 10  # bump when CONTROLS change: refreshes drop-downs, labels and groups once
+VERSION = 11  # bump when CONTROLS change: refreshes drop-downs, labels and groups once
 # the controls are laid out in these groups, top to bottom: (title, inputs, ARGB colour)
 SECTIONS = [
     ("1. General", ["stair_type", "turn", "start", "rotation", "path", "location", "boundary",
-                    "opening", "slab_thk", "floor_height", "width", "riser_count", "tread_depth",
+                    "opening", "slab_thk", "floor_height", "level_bottom", "level_top", "width", "riser_count", "tread_depth",
                     "stringer_on", "stringer_thk", "tread_thk", "riser_thk", "nosing",
                     "bake_layer", "text_layer", "bake"], (60, 120, 160, 220)),
     ("2. L-shaped and U-shaped", ["flight1_risers", "landing_depth", "well_gap"], (60, 230, 160, 60)),
     ("3. Spiral", ["spiral_radius", "turn_angle"], (60, 150, 90, 220)),
 ]
-FREE_INPUTS = ["rules"]  # no control; connect your own
+FREE_INPUTS = ["rules", "reference"]  # no control; connect your own (reference = project JSON)
 OUTPUTS = ["solids", "treads", "risers", "stringers", "landings", "report", "status",
            "n_risers", "riser_h", "tread_d", "flights", "headroom", "fits_boundary",
            "numbers_pt", "numbers_txt", "arrows", "up_pt", "up_txt"]
@@ -648,6 +652,91 @@ def bake_layers(bake_value, text_value):
     return layer, layer_path("text_layer", raw or DEFAULT_TEXT_LAYER, layer)
 
 
+# --- project reference (levels) --------------------------------------------------
+# The reference system (andicmc/building-element-standard, docs/project_reference.md) stores
+# levels + grids as JSON in the Rhino document user text under this key. The stair reads only
+# the levels, so a tiny reader lives here and the library is not needed.
+REFERENCE_KEY = "project_reference"
+REFERENCE_SCHEMA = 1
+REFERENCE_UNITS_TO_MM = {"mm": 1.0, "cm": 10.0, "m": 1000.0, "in": 25.4, "ft": 304.8}
+
+
+def _reference_text(rdoc, wired):
+    """Wired JSON first, else the document user text; None when neither exists."""
+    if wired is not None and str(wired).strip():
+        return str(wired)
+    strings = getattr(rdoc, "Strings", None)
+    if strings is None:
+        return None
+    try:
+        text = strings.GetValue(REFERENCE_KEY)
+    except Exception:
+        return None
+    return text if text else None
+
+
+def load_levels(rdoc, wired=None):
+    """{name: elevation in mm} from the project reference, or None when there is none."""
+    import json
+    text = _reference_text(rdoc, wired)
+    if text is None:
+        return None
+    try:
+        data = json.loads(text)
+    except ValueError as e:
+        raise InputError("The project reference JSON is not valid: {}".format(e))
+    if data.get("schema_version") != REFERENCE_SCHEMA:
+        raise InputError("Project reference schema_version {} is not supported (expected {})."
+                         .format(data.get("schema_version"), REFERENCE_SCHEMA))
+    unit = str(data.get("units", "mm")).lower()
+    if unit not in REFERENCE_UNITS_TO_MM:
+        raise InputError("Project reference units '{}' are unknown.".format(unit))
+    factor = REFERENCE_UNITS_TO_MM[unit]
+    return {str(lv["name"]): float(lv["elevation"]) * factor for lv in data.get("levels", [])}
+
+
+def _level(levels, name, which):
+    key = str(name).strip().strip('"').strip()
+    if key in levels:
+        return levels[key]
+    for k in levels:
+        if k.lower() == key.lower():
+            return levels[k]
+    raise InputError("{} = '{}' is not a level of the project reference. Levels: {}.".format(
+        which, key, ", ".join(levels) or "(none)"))
+
+
+def resolve_levels(rdoc, level_bottom, level_top, floor_height, wired=None):
+    """(floor height mm, bottom elevation mm or None, note or None).
+
+    Both level names set: the floor height is the elevation difference and the start point is
+    put on the bottom level. Both empty: the floor_height slider (raw fallback). One of the two
+    set is an error, so a half-wired definition never silently builds the wrong stair."""
+    def text(v):
+        if isinstance(v, (list, tuple)):
+            v = v[0] if v else None
+        return "" if v is None else str(v).strip().strip('"').strip()
+    bottom, top = text(level_bottom), text(level_top)
+    if not bottom and not top:
+        return floor_height, None, None
+    if not (bottom and top):
+        raise InputError("Set both level_bottom and level_top (or neither, to use floor_height).")
+    levels = load_levels(rdoc, wired)
+    if levels is None:
+        raise InputError("level_bottom/level_top are set but the Rhino document has no project "
+                         "reference (user text key '{}') and nothing is wired to 'reference'. "
+                         "Run BES_ProjectReference with Save, or clear the level names to use "
+                         "floor_height.".format(REFERENCE_KEY))
+    z0, z1 = _level(levels, bottom, "level_bottom"), _level(levels, top, "level_top")
+    height = z1 - z0
+    if height <= 0:
+        raise InputError("level_top '{}' ({:g} mm) is not above level_bottom '{}' ({:g} mm)."
+                         .format(top, z1, bottom, z0))
+    note = "Levels: {} ({:g} mm) to {} ({:g} mm) from the project reference; floor_height slider ignored.".format(
+        bottom, z0, top, z1)
+    return height, z0, note
+
+
 def resolve_rules(rules, gh_file):
     """A relative rule-file path is read from the folder of the .gh file."""
     if not rules or not isinstance(rules, str):
@@ -685,11 +774,17 @@ def _run():
     if (_get("stringer_on") or "yes") == "no":
         options.append("stringer_thk = 0")
     rot = math.radians(float(globals().get("rotation") or 0.0))
-    start_in = _get("start")
+    floor_height, base_z, level_note = resolve_levels(
+        rdoc, globals().get("level_bottom"), globals().get("level_top"), _get("floor_height"),
+        globals().get("reference"))
+    start_in = scaled(_get("start"), to_mm)
+    if base_z is not None and start_in is not None:
+        import Rhino.Geometry as rg
+        start_in = rg.Point3d(start_in.X, start_in.Y, base_z)   # project the start onto the level
     r = sg.run_design(
         ghenv, rules=resolve_rules(_get("rules"), _gh_file_path()),
-        stair_type=_get("stair_type"), floor_height=_get("floor_height"),
-        start=scaled(start_in, to_mm), direction=(math.cos(rot), math.sin(rot)),
+        stair_type=_get("stair_type"), floor_height=floor_height,
+        start=start_in, direction=(math.cos(rot), math.sin(rot)),
         width=_get("width"), landing_depth=_get("landing_depth"),
         spiral_radius=_get("spiral_radius"), turn_angle=_get("turn_angle"), turn=_get("turn"),
         riser_count=_get("riser_count"), tread_depth=_get("tread_depth"),
@@ -711,6 +806,8 @@ def _run():
     if abs(to_mm - 1.0) > 1e-12:
         units_line += " Geometry is converted to {}.".format(unit_name.lower())
     r["report"] = (r["report"] or "") + "\n\n" + units_line
+    if level_note:
+        r["report"] += "\n" + level_note
     if tol_mm > 1.0:
         msgs.append(("warning", "The document tolerance is {:g} mm: coarser than 1 mm, so solids "
                                 "and the boundary check may be inaccurate.".format(tol_mm)))

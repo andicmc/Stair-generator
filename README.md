@@ -58,6 +58,21 @@ If it is not found, the component turns red and lists every place it looked.
 - After changing the document units, recompute Grasshopper (F5): Grasshopper is not
   told about unit changes.
 
+## Levels from the project reference
+
+The stair can take its height from the shared project reference (grids + levels) that
+`andicmc/building-element-standard` stores in the Rhino document user text (key
+`project_reference`, see its `docs/project_reference.md`).
+
+| Input | Meaning |
+|---|---|
+| `level_bottom`, `level_top` | Level names, e.g. `L01` and `L02`. Both set: `floor_height` = elevation difference, and the start point is put on the bottom level. Both empty: the `floor_height` slider is used (raw fallback). One set: error. |
+| `reference` | Optional wired reference JSON (from `BES_ProjectReference.JSON`); overrides the document. |
+
+The reference's own `units` field is honoured (a reference saved in metres gives mm to the
+library). An unknown level name lists the known names; a reference with another
+`schema_version` is refused rather than guessed.
+
 ## Document checks
 
 - No Rhino document open: red error, nothing is computed.
@@ -89,6 +104,7 @@ Layers are typed as full paths, like Elefont: `Parent::Child::Grandchild`.
 | `REBUILD` | `False` | `True` rebuilds the controls once (each time you set it to True) |
 | `DEFAULT_BAKE_LAYER` | `03_ARCH::A-STAIR` | Bake layer when `bake_layer` is empty |
 | `DEFAULT_TEXT_LAYER` | `same` | Annotation layer when `text_layer` is empty |
+| `VERSION` | `11` | Bumped when the controls change; v01 definitions gain the level inputs once |
 | `RELOAD_LIBRARY` | `True` | Re-import the library every solution (for library editing; set False for speed) |
 
 ## Tests
